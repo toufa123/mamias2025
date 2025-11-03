@@ -1,0 +1,125 @@
+#version: '3.9'
+services:
+  #######################################
+  # PHP application Docker container
+  #######################################
+  app:
+    container_name: "${name}_app"
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile.development
+    links:
+      - postgres
+      - mail
+      #- redis
+      #- memcached
+    ports:
+      - "${NGINX80}:80"
+      - "${NGINX443}:443"
+    volumes:
+      - ./mamias/:/app/
+    environment:
+      - DATABASE_URL=pgsql://admin:postgres@postgres:5432/db${name}
+      - WEB_DOCUMENT_ROOT=/app/public
+      - WEB_DOCUMENT_INDEX=index.php
+      - CLI_SCRIPT=php /app/index.php
+    
+    labels:
+      - "traefik.http.routers.${NAME}.rule=Host(`${name}.local`)"
+  
+  ######################################
+  # PostgreSQL server
+  ######################################
+  postgres:
+    container_name: "${name}_database"
+    image: kartoza/postgis:latest
+    restart: always
+    ports:
+      - "${PG_PORT}:5432"
+    volumes:
+      #  - solr:/opt/solr/server/solr/data
+      - ./mamias-data:/var/lib/postgresql
+      #- ./backup/mamias29092020.sql:/docker-entrypoint-initdb.d/setup-db.sql
+    
+    environment:
+      - ALLOW_IP_RANGE=0.0.0.0/0
+      - DB_HOST=postgres
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_D{$name}
+      - POSTGRES_MULTIPLE_EXTENSIONS=postgis
+      - DEFAULT_ENCODING="UTF8"
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    
+  postgresus :
+      container_name : "${name}_backup"
+      image : rostislavdugin/postgresus:latest
+      ports :
+        - "4005:4005"
+      volumes :
+        - ./postgresus-data:/postgresus-data
+      restart : unless-stopped
+    
+    #command: bash -c "while [ ! -f /docker-entrypoin-initdb.d/public.sql ]; do sleep 1; done && /docker-entrypoint.sh"
+      #######################################
+      # Redis
+      #######################################
+      #redis:
+      #  build:
+      #    context: docker/redis/
+      #  volumes:
+      #    - redis:/data
+      #  env_file:
+      #    - etc/environment.yml
+      #    - etc/environment.production.yml
+      
+      #######################################
+      # Memcached
+      #######################################
+      #memcached:
+      #  build:
+      #    context: docker/memcached/
+      #  env_file:
+      #    - etc/environment.yml
+      #    - etc/environment.production.yml
+  
+  
+  #######################################
+  # Mail
+  #######################################
+  mail:
+    container_name : "${name}_mail"
+    image : mailhog/mailhog:latest
+    restart : always
+    ports :
+      - "1025:1025"
+      - "8025:8025"
+    labels:
+      - "traefik.http.services.${name}_mail.loadbalancer.server.port=1025"
+      - "traefik.http.routers.${name}_mail.rule=Host(`mail.${name}.local`)"
+  
+  #######################################
+  # Traefik
+  #######################################
+  traefik:
+    image: traefik:latest
+    container_name: "${name}_traefik"
+    restart: always
+    command: --api.insecure=true --providers.docker
+    ports:
+      #- '8000:80'
+      - '${traefik_port}:8080' # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  mamias-data:
+    #name : ${name}_data # Real ending name
+    #external : false
+  #pgadmin:
+  #${name}_mysql:
+  #  name: ${name}_data # Real ending name
+  #  external: false
+  
+
